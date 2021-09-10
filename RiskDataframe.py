@@ -76,7 +76,7 @@ class RiskDataframe(pd.DataFrame):
         """
         
        
-        
+        mnar_columns = []
         test_columns =[]
         null_columns=self.columns[self.isnull().any()]
         for i in null_columns:
@@ -86,7 +86,7 @@ class RiskDataframe(pd.DataFrame):
         categorical_variables =  self.select_dtypes(exclude=np.number).columns
         
         for t in test_columns:
-          print ('\nTesting for missing values relations for the ', t,' Category:')
+          
           for col in categorical_variables:
             for i in self[col].unique():
           
@@ -97,14 +97,32 @@ class RiskDataframe(pd.DataFrame):
               condition = (test_rows - not_missing)/test_rows
       
               if condition > 0.9:
-                  print ('\nThere is a correlation between missing values in ', t,' \nand the category ', i, '\nin Feature ', col)
+                  mnar_columns.append(t)
+        
+        
+        
+        full = []
+
+        for i in mnar_columns:
+            full.append(i[:len(i) - 5])
+        
+        self.drop(test_columns, axis=1, inplace = True)
+        full_mnar_columns = full + mnar_columns
+        thin_columns = [x for x in self.columns if x not in full_mnar_columns]
+        
+       
+        
+        
+        print ('Missing Not at Random Report - ', full, 'variables seem Missing Not at Random, there for we recommend:')
+        print ('\n\nThin File Segment Variables: ', thin_columns)
+        print ('\n\nFull File Segment Variables: ', self.columns)
           
         
         
          
     
  
-    def find_segment_split(self):
+    def find_segment_split(self, observation_rate):
         """
         find_segment_split(self, canditate='', input_vars=[], target='' )
         Returns
@@ -119,27 +137,15 @@ class RiskDataframe(pd.DataFrame):
         from matplotlib import pyplot as plt
         
         target = 'bucket'
-        all_variables = ['original_booked_amount', 'outstanding', 'car_type_rate', 'age', 'loan_expected_duration', 'program_name_rate', 'profession_rate', 'F']
+        all_variables = ['original_booked_amount', 'outstanding', 'car_type_rate', 'age', 'loan_expected_duration', 'program_name_rate', 'profession_rate', 'sex']
         categorical_variables = self.select_dtypes(exclude=np.number).columns
-        observation_rate = {}
-
-        for cat in categorical_variables:
-          observation_rate[cat] = {}
-          for i in self[cat].unique():
         
-            if self[self[cat] == i]['bucket'].value_counts().shape[0] == 2:
-              
-              observation_rate[cat][i] = self[(self[cat] == i)]['bucket'].value_counts()[1]/(self[(self[cat] == i)]['bucket'].value_counts()[1]+self[(self[cat] == i)]['bucket'].value_counts()[0])
-      
-    
-            else: 
-              observation_rate[cat][i] = 0
 #running full model
         from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
         splitter = train_test_split
         "-----------------------"
         
-        df_train, df_test = splitter(self, test_size = 0.2, random_state = 42) 
+        df_train, df_test = splitter(self, test_size = 0.2, random_state = 42)
         
         
         X_train = df_train[all_variables]
@@ -155,6 +161,13 @@ class RiskDataframe(pd.DataFrame):
         
         y_pred = fitted_full_model.predict_proba(X_test)[:,0]
         
+        #GINI Coefficient
+        from sklearn.metrics import roc_curve, auc
+        fpr,tpr,thresholds = roc_curve(y_test, y_pred)
+        roc_auc = auc(fpr,tpr)
+        GINI = (2*roc_auc) -1
+        
+      
 #running decision trees
         from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
         splitter = train_test_split
@@ -262,53 +275,68 @@ class RiskDataframe(pd.DataFrame):
               second_segment = i+'_segment2'
               category_segments.setdefault(second_segment, []).append(cat)
         
-        for variable in relevant_columns: 
-            #segment 1
-            df_train_seg1, df_train_seg2 = [x for _, x in self.groupby(self[variable] < final_thresholds[variable])]
-            df_test_seg1, df_test_seg2 = [x for _, x in self.groupby(self[variable] < final_thresholds[variable])]
-            X_train_seg1 = df_train_seg1[all_variables]
-            y_train_seg1 = df_train_seg1[target]
-            X_test_seg1 = df_test_seg1[all_variables]
-            y_test_seg1 = df_test_seg1[target]
-            fitted_model_seg1 = method.fit(X_train_seg1, y_train_seg1)
-            y_pred_seg1 = fitted_model_seg1.predict(X_test_seg1)
-            y_pred_seg1_fullmodel = fitted_full_model.predict(X_test_seg1)
+        for variable in X.columns:
+            if variable in relevant_columns:
+                df_train_seg1 = df_train[self[variable] <final_thresholds[variable]]
+                df_train_seg2 = df_train[self[variable] >final_thresholds[variable]]
+                df_test_seg1 = df_test[self[variable] <final_thresholds[variable]]
+                df_test_seg2 = df_test[self[variable] >final_thresholds[variable]]
         
-        #segment 2
-            X_train_seg2 = df_train_seg2[all_variables]
-            y_train_seg2 = df_train_seg2[target]
-            X_test_seg2 = df_test_seg2[all_variables]
-            y_test_seg2 = df_test_seg2[target]
-            fitted_model_seg2 = method.fit(X_train_seg2, y_train_seg2)
-            y_pred_seg2 = fitted_model_seg2.predict(X_test_seg2)
-            y_pred_seg2_fullmodel = fitted_full_model.predict(X_test_seg2)
+                X_train_seg1 = df_train_seg1[all_variables]
+                y_train_seg1 = df_train_seg1[target]
+                X_test_seg1 = df_test_seg1[all_variables]
+                y_test_seg1 = df_test_seg1[target]
+                fitted_model_seg1 = method.fit(X_train_seg1, y_train_seg1)
         
-            #Segment1: CAR_TYPE in (BMW', 'BYD', 'CARRY', 'Changan', 'CHEVROLET', 'Gelory', 'GELY', 'HYUNDAI') [GINI Full Model: 35.3492% / GINI Segmented Model: 37.3943%]
-        #printing results
-            if variable[:len(variable) - 5] in self.select_dtypes(exclude=np.number).columns:
-                original_variable = variable[:len(variable) - 5]
-                print ("     ")
-                print("Variable analyzed:", original_variable, ")")
-                print("SEGMENT 1 in (", category_segments[original_variable+'_segment1'])
-                print("     SEGMENT 1: Model Developed on Seg 1 (train sample) applied on Seg 1 (test sample):",accuracy_score(y_test_seg1, y_pred_seg1))
-                print("     SEGMENT 1: Model Developed on Full Population (train sample) applied on Seg 1 (test sample):",accuracy_score(y_test_seg1, y_pred_seg1_fullmodel))
-                print ("     ")
-                print("SEGMENT 2 in (",category_segments[original_variable+'_segment2'])
-                print("     SEGMENT 2: Model Developed on Full Population (train sample) applied on Seg 2 (test sample):",accuracy_score(y_test_seg2, y_pred_seg2_fullmodel))
-                print("     SEGMENT 2: Model Developed on Seg 2 (train sample) applied on Seg 2 (test sample):",accuracy_score(y_test_seg2, y_pred_seg2))
-                print ("     ")
-                print ("     ==============")
-            else:
-                print ("     ")
-                print("Variable analyzed:", variable, "> or < to", final_thresholds[variable])
-                print("     SEGMENT 1: Model Developed on Seg 1 (train sample) applied on Seg 1 (test sample):",accuracy_score(y_test_seg1, y_pred_seg1))
-                print("     SEGMENT 1: Model Developed on Full Population (train sample) applied on Seg 1 (test sample):",accuracy_score(y_test_seg1, y_pred_seg1_fullmodel))
-                print ("     ")
-                print("     SEGMENT 2: Model Developed on Full Population (train sample) applied on Seg 2 (test sample):",accuracy_score(y_test_seg2, y_pred_seg2_fullmodel))
-                print("     SEGMENT 2: Model Developed on Seg 2 (train sample) applied on Seg 2 (test sample):",accuracy_score(y_test_seg2, y_pred_seg2))
-                print ("     ")
-                print ("     ==============")
+                X_train_seg2 = df_train_seg2[all_variables]
+                y_train_seg2 = df_train_seg2[target]
+                X_test_seg2 = df_test_seg2[all_variables]
+                y_test_seg2 = df_test_seg2[target]
+                fitted_model_seg2 = method.fit(X_train_seg2, y_train_seg2)        
+        
+                def GINI(y_test, y_pred_probadbility):
+                    from sklearn.metrics import roc_curve, auc
+                    fpr, tpr, thresholds = roc_curve(y_test, y_pred_probadbility)
+                    roc_auc = auc(fpr, tpr)
+                    GINI = (2 * roc_auc) - 1
+                    return(GINI)
+        
+                y_pred_seg1_proba = fitted_model_seg1.predict_proba(X_test_seg1)[:,1]
+                y_pred_seg1_fullmodel_proba = fitted_full_model.predict_proba(X_test_seg1)[:,1]
+                y_pred_seg2_proba = fitted_model_seg2.predict_proba(X_test_seg2)[:,1]
+                y_pred_seg2_fullmodel_proba = fitted_full_model.predict_proba(X_test_seg2)[:,1]
+                
+                if variable[:len(variable) - 5] in self.select_dtypes(exclude=np.number).columns:
+                    original_variable = variable[:len(variable) - 5]
+                    print ("\n", original_variable, "- Good for segmentation:")
             
-    
+                    print("\n     Segment1:", original_variable, "in", category_segments[original_variable+'_segment1'], "[GINI Full Model: {:.4f}% / GINI Segmented Model: {:.4f}%]".format(
+                        GINI(y_test_seg1, y_pred_seg1_proba)*100,
+                        GINI(y_test_seg1, y_pred_seg1_fullmodel_proba)*100
+                    )) 
+            
+                    print("\n     Segment2:", original_variable, "in", category_segments[original_variable+'_segment2'], "[GINI Full Model: {:.4f}% / GINI Segmented Model: {:.4f}%]".format(
+                        GINI(y_test_seg2, y_pred_seg2_proba)*100,
+                        GINI(y_test_seg2, y_pred_seg2_fullmodel_proba)*100
+                    )) 
+                else:
+                    
+                    print ("\n", variable, "- Good for segmentation:")
+
+                    print("\n     Segment1:", variable, "<", final_thresholds[variable], "[GINI Full Model: {:.4f}% / GINI Segmented Model: {:.4f}%]".format(
+                        GINI(y_test_seg1, y_pred_seg1_proba)*100,
+                        GINI(y_test_seg1, y_pred_seg1_fullmodel_proba)*100
+                    )) 
+            
+                    print("\n     Segment2:", variable, ">", final_thresholds[variable], "[GINI Full Model: {:.4f}% / GINI Segmented Model: {:.4f}%]".format(
+                        GINI(y_test_seg2, y_pred_seg2_proba)*100,
+                        GINI(y_test_seg2, y_pred_seg2_fullmodel_proba)*100
+                    )) 
+            
+                    
+            else: 
+              print ("\n", variable, "Not good for segmentation. After analysis we did not find a good split using this variable") 
                     
             
+                            
+                    
