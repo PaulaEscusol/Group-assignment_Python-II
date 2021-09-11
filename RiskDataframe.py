@@ -3,13 +3,13 @@
 Created on Fri Aug  6 22:49:01 2021
 
 @author: Nicolas Ponte
+@updated by: Group D
 """
 
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-from sklearn.preprocessing import MinMaxScaler
-from sklearn import preprocessing
+
+
 
 class RiskDataframe(pd.DataFrame):
     """
@@ -66,15 +66,22 @@ class RiskDataframe(pd.DataFrame):
 #-----------------------------------------------------------------------------
                         # RISK BASED APPROACH
 #-----------------------------------------------------------------------------    
-    def missing_not_at_random(self, input_vars=[] ):
+    def missing_not_at_random(self, *args):
+       
         """
-
         Returns
         -------
         A print with the analysis.
-
         """
         
+        if len(args) > 1:
+            print ('More than one variable was passed.  missing_not_at_random accepts only one variable')
+            return()
+        
+        if not isinstance(self, pd.DataFrame):
+            print ('Wrong Arguments were passed')
+            print ('the correct format is: RiskDataframe.missing_not_at_random(DataFrame) where DataFrame is your DataFrame Name')
+            return()
        
         mnar_columns = []
         test_columns =[]
@@ -113,16 +120,16 @@ class RiskDataframe(pd.DataFrame):
        
         
         
-        print ('Missing Not at Random Report - ', full, 'variables seem Missing Not at Random, there for we recommend:')
-        print ('\n\nThin File Segment Variables: ', thin_columns)
-        print ('\n\nFull File Segment Variables: ', self.columns)
+        print ('\nMissing Not at Random Report - ', full, 'variables seem Missing Not at Random, there for we recommend:')
+        print ('\n\n   Thin File Segment Variables: ', thin_columns)
+        print ('\n\n   Full File Segment Variables: ', self.columns)
           
         
         
          
     
  
-    def find_segment_split(self, observation_rate):
+    def find_segment_split(self, target, all_variables, observation_rate, *args):
         """
         find_segment_split(self, canditate='', input_vars=[], target='' )
         Returns
@@ -133,47 +140,69 @@ class RiskDataframe(pd.DataFrame):
                 Segment2: SEX in ('M') [Accuracy Full Model: 63% / Accuracy Segmented Model: 68%]
                 
         """
-        from sklearn import tree
-        from matplotlib import pyplot as plt
+        if len(args) > 1:
+          print ('More than four variable was passed.  find_segment_split accepts only four variables')
+          print ('Where:\n   - DataFrame is the name of your dataframe')
+          print ('   - target is the name of your target variable')
+          print ('   - all_variables is the list of the variables to be included in the analysis')
+          print ('   - observation_rate is a dictionary that includes the observation rate of each category in categorical variables')
+          return()
+      
+        if not isinstance(self, pd.DataFrame):
+            print ('Wrong Dataframe name was passed')
+            print ('the correct format is: RiskDataframe.find_segment_split(DataFrame, target, all_variables[], observation_rate[])')
+            print ('Where:\n   - DataFrame is the name of your dataframe')
+            print ('   - target is the name of your target variable')
+            print ('   - all_variables is the list of the variables to be included in the analysis')
+            print ('   - observation_rate is a dictionary that includes the observation rate of each category in categorical variables')
+            return()
         
-        target = 'bucket'
-        all_variables = ['original_booked_amount', 'outstanding', 'car_type_rate', 'age', 'loan_expected_duration', 'program_name_rate', 'profession_rate', 'sex']
-        categorical_variables = self.select_dtypes(exclude=np.number).columns
-        
+        if not all(isinstance(self[element].iat[0], (int, float)) for element in all_variables):
+            print ('The list of variables provided contains non-numeric variables')
+            return()
+                
 #running full model
-        from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
+
+        from sklearn.model_selection import train_test_split
         splitter = train_test_split
         "-----------------------"
         
         df_train, df_test = splitter(self, test_size = 0.2, random_state = 42)
         
+        try:
+            X_train = df_train[all_variables]
+        except:
+            print ('Wrong variable list was passed, please make sure that you pass the right variables and that all of them are included in your dataframe')
+            return()
         
-        X_train = df_train[all_variables]
-        y_train = df_train[target]
+        try:
+            y_train = df_train[target]
+        except:
+            print ('Wrong target variable was passed, please make sure that you pass the right target and that it is included in your dataframe')
+            return()
+      
+            
         
-        X_test = df_test[all_variables]
-        y_test = df_test[target]
+#        X_test = df_test[all_variables]
+#        y_test = df_test[target]
         
         from sklearn.linear_model import LogisticRegression
         method = LogisticRegression(random_state=0)
         fitted_full_model = method.fit(X_train, y_train)
-        y_pred = fitted_full_model.predict(X_test)
+#       y_pred = fitted_full_model.predict(X_test)
         
-        y_pred = fitted_full_model.predict_proba(X_test)[:,0]
+#        y_pred = fitted_full_model.predict_proba(X_test)[:,0]
         
         #GINI Coefficient
-        from sklearn.metrics import roc_curve, auc
-        fpr,tpr,thresholds = roc_curve(y_test, y_pred)
-        roc_auc = auc(fpr,tpr)
-        GINI = (2*roc_auc) -1
+#        from sklearn.metrics import roc_curve, auc
+#        fpr,tpr,thresholds = roc_curve(y_test, y_pred)
+#        roc_auc = auc(fpr,tpr)
+#        GINI = (2*roc_auc) -1
+ 
         
       
 #running decision trees
-        from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
-        splitter = train_test_split
-        "-----------------------"
-        
-        df_train, df_test = splitter(self, test_size = 0.2, random_state = 42)
+        from sklearn import tree
         
         X = df_train[all_variables]
         Y = df_train[target]
@@ -260,21 +289,25 @@ class RiskDataframe(pd.DataFrame):
                 relevant_columns.append(variable)
                 if variable[:len(variable) - 5] in self.select_dtypes(exclude=np.number).columns:
                     relevant_categories.append(variable[:len(variable) - 5])
-       #     else:
-       #        print (variable, ": Not good for segmentation. After analysis we did not find a good split using this variable")
-        
+ 
         category_segments = {}
 
         for i in relevant_categories:
           column_header = i+'_rate'
-          for cat in observation_rate[i]:   
-            if observation_rate[i][cat] >= final_thresholds[column_header]: 
-              first_segment = i+'_segment1'
-              category_segments.setdefault(first_segment, []).append(cat)
-            else:  
-              second_segment = i+'_segment2'
-              category_segments.setdefault(second_segment, []).append(cat)
+          try:
+              for cat in observation_rate[i]:   
+                if observation_rate[i][cat] >= final_thresholds[column_header]: 
+                  first_segment = i+'_segment1'
+                  category_segments.setdefault(first_segment, []).append(cat)
+                else:  
+                  second_segment = i+'_segment2'
+                  category_segments.setdefault(second_segment, []).append(cat)
+          except:
+              print ('Wrong observation_rate dictionary was passed.')
+              print ('Please make sure that you pass the dictionary and that it includes the observation rate for all categorical variables')
+              return()
         
+        print ('\nVariable by Variable Risk Based Segmentation Analysis:\n')
         for variable in X.columns:
             if variable in relevant_columns:
                 df_train_seg1 = df_train[self[variable] <final_thresholds[variable]]
@@ -308,7 +341,7 @@ class RiskDataframe(pd.DataFrame):
                 
                 if variable[:len(variable) - 5] in self.select_dtypes(exclude=np.number).columns:
                     original_variable = variable[:len(variable) - 5]
-                    print ("\n", original_variable, "- Good for segmentation:")
+                    print ("\n  ", original_variable, "- Good for segmentation:")
             
                     print("\n     Segment1:", original_variable, "in", category_segments[original_variable+'_segment1'], "[GINI Full Model: {:.4f}% / GINI Segmented Model: {:.4f}%]".format(
                         GINI(y_test_seg1, y_pred_seg1_proba)*100,
@@ -321,7 +354,7 @@ class RiskDataframe(pd.DataFrame):
                     )) 
                 else:
                     
-                    print ("\n", variable, "- Good for segmentation:")
+                    print ("\n  ", variable, "- Good for segmentation:")
 
                     print("\n     Segment1:", variable, "<", final_thresholds[variable], "[GINI Full Model: {:.4f}% / GINI Segmented Model: {:.4f}%]".format(
                         GINI(y_test_seg1, y_pred_seg1_proba)*100,
@@ -335,7 +368,7 @@ class RiskDataframe(pd.DataFrame):
             
                     
             else: 
-              print ("\n", variable, "Not good for segmentation. After analysis we did not find a good split using this variable") 
+              print ("\n", variable, "is not good for segmentation. After analysis we did not find a good split using this variable") 
                     
             
                             
