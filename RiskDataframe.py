@@ -163,6 +163,15 @@ class RiskDataframe(pd.DataFrame):
                 
 #running full model
 
+        from sklearn.preprocessing import MinMaxScaler
+        
+        scaler = MinMaxScaler()
+        continous_variables = self.select_dtypes(include=np.number).columns
+        
+        for v in continous_variables:
+            self[v+'_original'] = self[v]
+            self[v] = scaler.fit_transform(self[[v]])
+
         from sklearn.model_selection import train_test_split
         splitter = train_test_split
         "-----------------------"
@@ -307,6 +316,8 @@ class RiskDataframe(pd.DataFrame):
               print ('Please make sure that you pass the dictionary and that it includes the observation rate for all categorical variables')
               return()
         
+ 
+            
         print ('\nVariable by Variable Risk Based Segmentation Analysis:\n')
         for variable in X.columns:
             if variable in relevant_columns:
@@ -339,6 +350,9 @@ class RiskDataframe(pd.DataFrame):
                 y_pred_seg2_proba = fitted_model_seg2.predict_proba(X_test_seg2)[:,1]
                 y_pred_seg2_fullmodel_proba = fitted_full_model.predict_proba(X_test_seg2)[:,1]
                 
+           
+                    
+                
                 if variable[:len(variable) - 5] in self.select_dtypes(exclude=np.number).columns:
                     original_variable = variable[:len(variable) - 5]
                     print ("\n  ", original_variable, "- Good for segmentation:")
@@ -353,6 +367,8 @@ class RiskDataframe(pd.DataFrame):
                         GINI(y_test_seg2, y_pred_seg2_fullmodel_proba)*100
                     )) 
                 else:
+                    
+                    self[variable] = self[variable+'_original']
                     
                     print ("\n  ", variable, "- Good for segmentation:")
 
