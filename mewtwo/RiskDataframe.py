@@ -74,7 +74,7 @@ class RiskDataframe(pd.DataFrame):
         A print with the analysis.
         """
         
-        if len(args) > 1:
+        if len(args) > 0:
             print ('More than one variable was passed.  missing_not_at_random accepts only one variable')
             return()
         
@@ -140,8 +140,8 @@ class RiskDataframe(pd.DataFrame):
                 Segment2: SEX in ('M') [Accuracy Full Model: 63% / Accuracy Segmented Model: 68%]
                 
         """
-        if len(args) > 1:
-          print ('More than four variable was passed.  find_segment_split accepts only four variables')
+        if len(args) > 0:
+          print ('More than four variable were passed.  find_segment_split accepts only four variables')
           print ('Where:\n   - DataFrame is the name of your dataframe')
           print ('   - target is the name of your target variable')
           print ('   - all_variables is the list of the variables to be included in the analysis')
@@ -156,12 +156,28 @@ class RiskDataframe(pd.DataFrame):
             print ('   - all_variables is the list of the variables to be included in the analysis')
             print ('   - observation_rate is a dictionary that includes the observation rate of each category in categorical variables')
             return()
-        
-        if not all(isinstance(self[element].iat[0], (int, float)) for element in all_variables):
-            print ('The list of variables provided contains non-numeric variables')
+        try:
+            if not all(isinstance(self[element].iat[0], (int, float)) for element in all_variables):
+                print ('The list of variables provided contains non-numeric variables')
+                return()
+        except: 
+            print ('Wrong list was passed, please make sure that all the variables in the list are included in the Dataframe')
             return()
                 
 #running full model
+
+        from sklearn.preprocessing import MinMaxScaler
+        scaler = MinMaxScaler()
+        
+     
+        
+      
+        
+        
+        for v in all_variables:
+            self[v+'_original'] = self[v]
+            self[v] = scaler.fit_transform(self[[v]])
+    
 
         from sklearn.model_selection import train_test_split
         splitter = train_test_split
@@ -307,9 +323,15 @@ class RiskDataframe(pd.DataFrame):
               print ('Please make sure that you pass the dictionary and that it includes the observation rate for all categorical variables')
               return()
         
+
+             
         print ('\nVariable by Variable Risk Based Segmentation Analysis:\n')
-        for variable in X.columns:
+        for variable in all_variables:
+            
+            
+            
             if variable in relevant_columns:
+                print (variable, 'mean is: ', self[variable].mean())
                 df_train_seg1 = df_train[self[variable] <final_thresholds[variable]]
                 df_train_seg2 = df_train[self[variable] >final_thresholds[variable]]
                 df_test_seg1 = df_test[self[variable] <final_thresholds[variable]]
@@ -339,6 +361,8 @@ class RiskDataframe(pd.DataFrame):
                 y_pred_seg2_proba = fitted_model_seg2.predict_proba(X_test_seg2)[:,1]
                 y_pred_seg2_fullmodel_proba = fitted_full_model.predict_proba(X_test_seg2)[:,1]
                 
+                            
+                
                 if variable[:len(variable) - 5] in self.select_dtypes(exclude=np.number).columns:
                     original_variable = variable[:len(variable) - 5]
                     print ("\n  ", original_variable, "- Good for segmentation:")
@@ -354,14 +378,15 @@ class RiskDataframe(pd.DataFrame):
                     )) 
                 else:
                     
+                    
                     print ("\n  ", variable, "- Good for segmentation:")
-
-                    print("\n     Segment1:", variable, "<", final_thresholds[variable], "[GINI Full Model: {:.4f}% / GINI Segmented Model: {:.4f}%]".format(
+                    
+                    print("\n     Segment1:", variable, "<", self[self[variable] > final_thresholds[variable]][variable+'_original'].min(), "[GINI Full Model: {:.4f}% / GINI Segmented Model: {:.4f}%]".format(
                         GINI(y_test_seg1, y_pred_seg1_proba)*100,
                         GINI(y_test_seg1, y_pred_seg1_fullmodel_proba)*100
                     )) 
             
-                    print("\n     Segment2:", variable, ">", final_thresholds[variable], "[GINI Full Model: {:.4f}% / GINI Segmented Model: {:.4f}%]".format(
+                    print("\n     Segment2:", variable, ">", self[self[variable] > final_thresholds[variable]][variable+'_original'].min(), "[GINI Full Model: {:.4f}% / GINI Segmented Model: {:.4f}%]".format(
                         GINI(y_test_seg2, y_pred_seg2_proba)*100,
                         GINI(y_test_seg2, y_pred_seg2_fullmodel_proba)*100
                     )) 
@@ -370,6 +395,11 @@ class RiskDataframe(pd.DataFrame):
             else: 
               print ("\n", variable, "is not good for segmentation. After analysis we did not find a good split using this variable") 
                     
+            if (variable+'_original') in self.select_dtypes(include=np.number).columns:
+                  self[variable] = self[variable+'_original']
+                  self.drop([variable+'_original'], axis = 1, inplace=True)  
+                          
+    def final_report(target, mnar_report, split_report, *args):
             
-                            
-                    
+        final_report = 'Execution Summary Report' + ':\n   ' + target + 'is the target variable and was not analized separetly.\n' + mnar_report + '\n' + split_report
+        print (final_report)
