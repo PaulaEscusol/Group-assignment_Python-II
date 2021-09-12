@@ -14,4 +14,4 @@ from mewtwo.RiskDataframe import RiskDataframe
 ```
 
 # Demo
-You may see a demo of the Risk Dataframe package applied to a Car Loans Dataset by accessing ```Group_assignment_05_09_2021_v1.ipynb```
+You may see a demo of the Risk Dataframe class applied to a Car Loans Dataset by accessing ```Group_assignment_05_09_2021_v1.ipynb```
