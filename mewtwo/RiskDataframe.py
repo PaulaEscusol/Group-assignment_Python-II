@@ -3,7 +3,22 @@
 Created on Fri Aug  6 22:49:01 2021
 
 @author: Nicolas Ponte
-@updated by: Group D
+@updated by: Group D:
+• 	Ahmed Aljeshi
+•	Juan Francisco Balbi 
+•	Paula Escusol Entío
+•	Isobel Rae Impas 
+•	Paliz Mungkaladung
+    
+"""
+"""
+list of vectorized functions used:
+    - pd.isnull()
+    - pd.where()
+    - pd.sum()
+    - all sklearn functions
+
+
 """
 
 import pandas as pd
@@ -33,35 +48,6 @@ class RiskDataframe(pd.DataFrame):
             return df
         return func_
     
-#-----------------------------------------------------------------------------
-                        # DATA HANDLING
-#-----------------------------------------------------------------------------
-
-    def SetAttributes(self, kwargs):
-        """
-        The function will update the type of the variable submitted for change.
-        It will veify first that the key is present in the desired dataframe.
-        If present, it will try to change the type to the desired format.
-        If not possible, it will continue to the next element.         
-        Parameters
-        ----------
-        **kwargs : The key-argument pair of field-type relationship that
-        wants to be updated.
-        Returns
-        -------
-        None.
-        """
-        if self.shape[0] > 0:
-            for key,vartype in kwargs.items():
-                if key in self.columns:
-                    try:
-                        self[key] = self[key].astype(vartype)
-                    except:
-                        print("Undefined type {}".format(str(vartype)))
-                else:
-                    print("The dataframe does not contain variable {}.".format(str(key)))
-        else:
-            print("The dataframe has not yet been initialized")
 
 #-----------------------------------------------------------------------------
                         # RISK BASED APPROACH
@@ -69,10 +55,17 @@ class RiskDataframe(pd.DataFrame):
     def missing_not_at_random(self, *args):
        
         """
+             
+        Parameters
+        ----------
+        self   : TYPE: Dataframe
+            DESCRIPTION: The dataframe with the data to be analyzed
         Returns
         -------
-        A print with the analysis.
+        A print with the analysis of the missing not at random status of the Dataframe provided.
         """
+        
+        # Checking for user erros
         
         if len(args) > 0:
             print ('More than one variable was passed.  missing_not_at_random accepts only one variable')
@@ -85,44 +78,57 @@ class RiskDataframe(pd.DataFrame):
        
         mnar_columns = []
         test_columns =[]
+        related_columns = []
+        related_categories = []
+        
         null_columns=self.columns[self.isnull().any()]
+        
+        # Initializing test columns to include 0's where the corresponding category is null and 1 otherwise
         for i in null_columns:
           self[i + '_test'] = np.where(self[i].isnull(),0, 1)
           test_columns.append(i + '_test')
          
         categorical_variables =  self.select_dtypes(exclude=np.number).columns
+     
         
+         # A nested for loop to pupulate:
+         #    1. The mnar_columns: includes column names with values that mnar_columns
+         #    2. related_columns: includes the column names related to the mnar_columns
+         #    3. related_categories: related categories to mnar_columns
+             
         for t in test_columns:
           
           for col in categorical_variables:
-            for i in self[col].unique():
+              
+            
+            for cat in self[col].unique():
           
-              not_missing = self[self[col] == i][t].sum()
+              not_missing = self[self[col] == cat][t].sum()
            
-              test_rows = self[self[col] == i].shape[0]
-           
-              condition = (test_rows - not_missing)/test_rows
+              all_cat_rows = self[self[col] == cat].shape[0]
+              
+              if all_cat_rows > 0:
+                  condition = (all_cat_rows - not_missing)/all_cat_rows
+              else:
+                  condition = 0
+                 
       
               if condition > 0.9:
-                  mnar_columns.append(t)
+                  mnar_columns.append(t[:len(t) - 5])
+                  related_columns.append(col)
+                  related_categories.append(cat)
         
-        
-        
-        full = []
-
-        for i in mnar_columns:
-            full.append(i[:len(i) - 5])
-        
+            
         self.drop(test_columns, axis=1, inplace = True)
-        full_mnar_columns = full + mnar_columns
-        thin_columns = [x for x in self.columns if x not in full_mnar_columns]
         
-       
+        # Printing the MNAR Report
         
-        
-        print ('\nMissing Not at Random Report - ', full, 'variables seem Missing Not at Random, there for we recommend:')
+        thin_columns = [x for x in self.columns if x not in mnar_columns]
+               
+        print ('\nMissing Not at Random Report - ', mnar_columns, 'variables seem Missing Not at Random, there for we recommend:')
         print ('\n\n   Thin File Segment Variables: ', thin_columns)
         print ('\n\n   Full File Segment Variables: ', self.columns)
+        print ('\n\nPlease note that they are related to the Variable(s):', related_columns, ' and category(s):', related_categories, ', respectively')
           
         
         
@@ -131,15 +137,29 @@ class RiskDataframe(pd.DataFrame):
  
     def find_segment_split(self, target, all_variables, observation_rate, *args):
         """
-        find_segment_split(self, canditate='', input_vars=[], target='' )
+       
         Returns
         -------
         Example 1: ACCOUNT_NUMBER Not good for segmentation. Afer analysis, we did not find a good split using this variable.
         Example 2: SEX Good for segmentation.  +
                 Segment1: SEX in ('F') [Accuracy Full Model: 32% / Accuracy Segmented Model: 33%]
                 Segment2: SEX in ('M') [Accuracy Full Model: 63% / Accuracy Segmented Model: 68%]
-                
+        -------
+        Parameters
+        ----------
+        self   : TYPE: Dataframe
+            DESCRIPTION: The dataframe with the data to be analyzed
+        target : TYPE: string
+            DESCRIPTION: contains the target variable
+        all_variables : TYPE: list
+            DESCRIPTION: list of variables to be considered for analysis
+        observation_rate : TYPE: dictionary
+            DESCRIPTION:dictionary of the categorical variables observation rate 
+   
         """
+        
+        # Checking for user errors
+        
         if len(args) > 0:
           print ('More than four variable were passed.  find_segment_split accepts only four variables')
           print ('Where:\n   - DataFrame is the name of your dataframe')
@@ -164,21 +184,17 @@ class RiskDataframe(pd.DataFrame):
             print ('Wrong list was passed, please make sure that all the variables in the list are included in the Dataframe')
             return()
                 
-#running full model
+        # To ensure robustness, we scaled all the variables using MinMax Scaler
 
         from sklearn.preprocessing import MinMaxScaler
         scaler = MinMaxScaler()
-        
-     
-        
-      
-        
         
         for v in all_variables:
             self[v+'_original'] = self[v]
             self[v] = scaler.fit_transform(self[[v]])
     
-
+        # Splitting the Dataset
+        
         from sklearn.model_selection import train_test_split
         splitter = train_test_split
         "-----------------------"
@@ -199,25 +215,20 @@ class RiskDataframe(pd.DataFrame):
       
             
         
-#        X_test = df_test[all_variables]
-#        y_test = df_test[target]
+        # Running the full model on all variables
         
         from sklearn.linear_model import LogisticRegression
+        from sklearn.model_selection import cross_val_score
+        from sklearn.model_selection import RepeatedKFold
+        
         method = LogisticRegression(random_state=0)
         fitted_full_model = method.fit(X_train, y_train)
-#       y_pred = fitted_full_model.predict(X_test)
         
-#        y_pred = fitted_full_model.predict_proba(X_test)[:,0]
-        
-        #GINI Coefficient
-#        from sklearn.metrics import roc_curve, auc
-#        fpr,tpr,thresholds = roc_curve(y_test, y_pred)
-#        roc_auc = auc(fpr,tpr)
-#        GINI = (2*roc_auc) -1
- 
+
         
       
-#running decision trees
+        #running decision trees to decide on which variables to use for segmentation and their threshold
+        
         from sklearn import tree
         
         X = df_train[all_variables]
@@ -230,13 +241,15 @@ class RiskDataframe(pd.DataFrame):
         #fit the tree to iris dataset
         clf.fit(X,Y)
         
+        # Function to get the Threshold
         # Reference: https://mljar.com/blog/extract-rules-decision-tree/ (with modification)
+        
         from sklearn.tree import export_text
         from sklearn.tree import _tree
-        #tree_rules = export_text(clf, feature_names=list(X.columns))
+       
         tree_rules = export_text(clf, feature_names=list(X.columns))
         
-        def get_rules(tree, feature_names, class_names):
+        def get_thresholds(tree, feature_names, class_names):
             tree_ = tree.tree_
             feature_name = [
                 feature_names[i] if i != _tree.TREE_UNDEFINED else "undefined!"
@@ -265,7 +278,9 @@ class RiskDataframe(pd.DataFrame):
                 return final_thresholds
         
             final_thresholds = recurse(0, path, paths)
-        
+            
+            """
+            # Was included in the original function
             # sort by samples count
             samples_count = [p[-1][1] for p in paths]
             ii = list(np.argsort(samples_count))
@@ -288,26 +303,36 @@ class RiskDataframe(pd.DataFrame):
                     rule += f"class: {class_names[l]} (proba: {np.round(100.0*classes[l]/np.sum(classes),2)}%)"
                 rule += f" | based on {path[-1][1]:,} samples"
                 rules += [rule]
-                
-            return rules, final_thresholds
-
-        rules, final_thresholds = get_rules(clf, all_variables, all_variables)
+            """   
+            
+            return final_thresholds
+            
+            
+        final_thresholds = get_thresholds(clf, all_variables, all_variables)
         
-        
-        
-          
         relevant_columns = []
         relevant_categories = []
-       
         
-        for variable in X.columns:
+        # Function to get the releveant columns and relevant categorical columns
+        
+        def column_types(variable, relevant_columns, relevant_categories):
+            
+          
             if variable in tree_rules:
                 relevant_columns.append(variable)
                 if variable[:len(variable) - 5] in self.select_dtypes(exclude=np.number).columns:
                     relevant_categories.append(variable[:len(variable) - 5])
- 
+            
+        
+        for i in X.columns:
+            column_types(i, relevant_columns, relevant_categories)
+        
+        
+        
         category_segments = {}
-
+        
+        # A for loop to get the categorical segments according their repective observation ratio threshold
+        
         for i in relevant_categories:
           column_header = i+'_rate'
           try:
@@ -331,7 +356,8 @@ class RiskDataframe(pd.DataFrame):
             
             
             if variable in relevant_columns:
-                print (variable, 'mean is: ', self[variable].mean())
+                # Running the model on each segment and comparing the output using the GINI metric
+                
                 df_train_seg1 = df_train[self[variable] <final_thresholds[variable]]
                 df_train_seg2 = df_train[self[variable] >final_thresholds[variable]]
                 df_test_seg1 = df_test[self[variable] <final_thresholds[variable]]
@@ -342,26 +368,30 @@ class RiskDataframe(pd.DataFrame):
                 X_test_seg1 = df_test_seg1[all_variables]
                 y_test_seg1 = df_test_seg1[target]
                 fitted_model_seg1 = method.fit(X_train_seg1, y_train_seg1)
-        
+                
                 X_train_seg2 = df_train_seg2[all_variables]
                 y_train_seg2 = df_train_seg2[target]
                 X_test_seg2 = df_test_seg2[all_variables]
                 y_test_seg2 = df_test_seg2[target]
                 fitted_model_seg2 = method.fit(X_train_seg2, y_train_seg2)        
-        
+                
+                            
+                 
+                # A function to get the GINI score
+                
                 def GINI(y_test, y_pred_probadbility):
                     from sklearn.metrics import roc_curve, auc
                     fpr, tpr, thresholds = roc_curve(y_test, y_pred_probadbility)
                     roc_auc = auc(fpr, tpr)
                     GINI = (2 * roc_auc) - 1
                     return(GINI)
-        
+ 
                 y_pred_seg1_proba = fitted_model_seg1.predict_proba(X_test_seg1)[:,1]
                 y_pred_seg1_fullmodel_proba = fitted_full_model.predict_proba(X_test_seg1)[:,1]
                 y_pred_seg2_proba = fitted_model_seg2.predict_proba(X_test_seg2)[:,1]
                 y_pred_seg2_fullmodel_proba = fitted_full_model.predict_proba(X_test_seg2)[:,1]
                 
-                            
+                           
                 
                 if variable[:len(variable) - 5] in self.select_dtypes(exclude=np.number).columns:
                     original_variable = variable[:len(variable) - 5]
@@ -400,6 +430,33 @@ class RiskDataframe(pd.DataFrame):
                   self.drop([variable+'_original'], axis = 1, inplace=True)  
                           
     def final_report(target, mnar_report, split_report, *args):
+        """
+        This method combines the mnar_report and the splite report
+        
+
+        Parameters
+        ----------
+        target : TYPE: string
+            DESCRIPTION: contains the target variable
+        mnar_report : TYPE: string
+            DESCRIPTION: contains the output of the missing_not_at_random method
+        split_report : TYPE: string
+            DESCRIPTION:contains the output of the find_segment_split method
+   
+
+        Returns
+        -------
+        A print of the combined report
+
+        """
+        if len(args) > 0:
+          print ('More than three variable were passed.') 
+          print ('final_report accepts only three string variables (target, mnar_report, split_report)')
+        
+              
+        try:   
+            final_report = 'Execution Summary Report' + ':\n   ' + target + 'is the target variable and was not analized separetly.\n' + mnar_report + '\n' + split_report
+            print (final_report)
+        except:
+            print ('Wrong Arguments were passed, please make sure you pass thee string arguments')
             
-        final_report = 'Execution Summary Report' + ':\n   ' + target + 'is the target variable and was not analized separetly.\n' + mnar_report + '\n' + split_report
-        print (final_report)
