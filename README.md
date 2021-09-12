@@ -8,7 +8,7 @@ To install this package, please make sure you have Python version >=3.7, and do 
 ```
 $ pip install git+https://github.com/PaulaEscusol/Group-assignment_Python-II
 ```
-To access the Risk Dataframe class with the Mewtwo package, please do the following,
+To access the Risk Dataframe class within the Mewtwo package, please do the following,
 ```
 from mewtwo.RiskDataframe import RiskDataframe
 ```
