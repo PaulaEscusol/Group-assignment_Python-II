@@ -12,7 +12,7 @@ or
 ```
 $ pip install mewtwo
 ```
-To access the Risk Dataframe class within the Mewtwo package, please do the following,
+<br>To access the Risk Dataframe class within the Mewtwo package, please do the following,
 ```
 from mewtwo.RiskDataframe import RiskDataframe
 ```
